@@ -29,12 +29,17 @@ namespace GLTFTest
             };
             _basicEffect.EnableDefaultLighting();
 
+            _basicEffect.AmbientLightColor = new(0.4f, 0.4f, 0.4f);
+
             _basicEffect.DirectionalLight0.Enabled = true;
             _basicEffect.DirectionalLight0.DiffuseColor = new(0.3f, 0.3f, 0.3f);
-            _basicEffect.DirectionalLight0.SpecularColor = new(0.3f, 0.3f, 0.3f);
-            _basicEffect.DirectionalLight1.Enabled = false;
+            _basicEffect.DirectionalLight0.SpecularColor = new(0.1f, 0.1f, 0.1f);
+
+            _basicEffect.DirectionalLight1.Enabled = true;
+            _basicEffect.DirectionalLight1.DiffuseColor = new(0.1f, 0.0f, 0.0f);
+
             _basicEffect.DirectionalLight2.Enabled = false;
-            _basicEffect.AmbientLightColor = new(0.4f, 0.4f, 0.4f);
+
 
             LoadGLTFModel(path);
         }

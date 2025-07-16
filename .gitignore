@@ -1,5 +1,7 @@
 # 빌드 출력물
-GLTFTest/bin/*
+
+GLTFTest/bin/
+GLTFTest/obj/
 
 # OS 파일
 .DS_Store
