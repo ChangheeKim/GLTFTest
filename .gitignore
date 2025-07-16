@@ -1,0 +1,15 @@
+# 빌드 출력물
+GLTFTest/bin/*
+
+# OS 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 사용자·IDE 설정
+.vscode/
+*.code-workspace
+*.user
+*.suo
+*.userprefs
+*.userosscache
