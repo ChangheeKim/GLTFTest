@@ -1,10 +1,10 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using SharpGLTF.Schema2;
+using PrimitiveType = Microsoft.Xna.Framework.Graphics.PrimitiveType;
 
 namespace GLTFTest
 {
@@ -15,9 +15,12 @@ namespace GLTFTest
         private readonly BasicEffect _basicEffect;
         private readonly Matrix _view;
         private readonly Matrix _projection;
+        private readonly GraphicsDevice _device;
+        private readonly Dictionary<int, Texture2D> _textures = new();
 
         public GltfModel(GraphicsDevice device, string path, Matrix view, Matrix projection)
         {
+            _device = device;
             _view = view;
             _projection = projection;
 
@@ -25,7 +28,8 @@ namespace GLTFTest
             {
                 LightingEnabled = true,
                 View = _view,
-                Projection = _projection
+                Projection = _projection,
+                TextureEnabled = true  // 텍스처 활성화
             };
             _basicEffect.EnableDefaultLighting();
 
@@ -34,12 +38,15 @@ namespace GLTFTest
             _basicEffect.DirectionalLight0.Enabled = true;
             _basicEffect.DirectionalLight0.DiffuseColor = new(0.3f, 0.3f, 0.3f);
             _basicEffect.DirectionalLight0.SpecularColor = new(0.1f, 0.1f, 0.1f);
+            _basicEffect.DirectionalLight0.Direction = new(0f, -1f, 0f);
 
             _basicEffect.DirectionalLight1.Enabled = true;
-            _basicEffect.DirectionalLight1.DiffuseColor = new(0.1f, 0.0f, 0.0f);
+            _basicEffect.DirectionalLight1.DiffuseColor = new(0.3f, 0.0f, 0.0f);
+            _basicEffect.DirectionalLight1.Direction = new(-1.0f, 0f, 0f);
 
-            _basicEffect.DirectionalLight2.Enabled = false;
-
+            _basicEffect.DirectionalLight2.Enabled = true;
+            _basicEffect.DirectionalLight2.DiffuseColor = new(0.0f, 0.0f, 0.3f);
+            _basicEffect.DirectionalLight2.Direction = new(1.0f, 0f, 0f);
 
             LoadGLTFModel(path);
         }
@@ -50,7 +57,27 @@ namespace GLTFTest
                 throw new FileNotFoundException($"GLB 파일을 찾을 수 없습니다: {path}");
 
             _gltfModel = ModelRoot.Load(path);
+            LoadTextures();
             ExtractMeshData();
+        }
+
+        private void LoadTextures()
+        {
+            _textures.Clear();
+
+            for (int i = 0; i < _gltfModel.LogicalTextures.Count; i++)
+            {
+                var gltfTexture = _gltfModel.LogicalTextures[i];
+                var image = gltfTexture.PrimaryImage;
+
+                if (image?.Content.IsValid == true)
+                {
+                    var imageData = image.Content.Content.ToArray();
+                    using var stream = new MemoryStream(imageData);
+                    var texture = Texture2D.FromStream(_device, stream);
+                    _textures[i] = texture;
+                }
+            }
         }
 
         private void ExtractMeshData()
@@ -94,8 +121,8 @@ namespace GLTFTest
             for (int i = 0; i < posAcc.Count; i++)
             {
                 var P = posAcc[i];
-                var N = nrmAcc != null ? nrmAcc[i] : System.Numerics.Vector3.UnitY;
-                var U = uvAcc != null ? uvAcc[i] : System.Numerics.Vector2.Zero;
+                var N = nrmAcc != null ? nrmAcc[i] : Vector3.UnitY;
+                var U = uvAcc != null ? uvAcc[i] : Vector2.Zero;
 
                 verts[i] = new VertexPositionNormalTexture(
                     new Vector3(P.X, P.Y, P.Z),
@@ -117,11 +144,30 @@ namespace GLTFTest
                 }
             }
 
+            // 머터리얼에서 텍스처 정보 가져오기
+            Texture2D texture = null;
+            if (p.Material != null)
+            {
+                var baseColorTexture = p.Material.FindChannel("BaseColor")?.Texture;
+                if (baseColorTexture != null)
+                {
+                    var textureIndex = _gltfModel.LogicalTextures
+                        .Select((tex, index) => new { Texture = tex, Index = index })
+                        .FirstOrDefault(x => x.Texture == baseColorTexture)?.Index ?? -1;
+
+                    if (textureIndex >= 0 && _textures.ContainsKey(textureIndex))
+                    {
+                        texture = _textures[textureIndex];
+                    }
+                }
+            }
+
             md = new MeshData
             {
                 Vertices = verts,
                 Indices = idxList,
-                Transform = xform
+                Transform = xform,
+                Texture = texture
             };
             return true;
         }
@@ -131,13 +177,25 @@ namespace GLTFTest
             foreach (var mesh in _meshes)
             {
                 _basicEffect.World = mesh.Transform * world;
+
+                // 텍스처 설정
+                if (mesh.Texture != null)
+                {
+                    _basicEffect.Texture = mesh.Texture;
+                    _basicEffect.TextureEnabled = true;
+                }
+                else
+                {
+                    _basicEffect.TextureEnabled = false;
+                }
+
                 foreach (var pass in _basicEffect.CurrentTechnique.Passes)
                 {
                     pass.Apply();
                     if (mesh.Indices != null)
                     {
                         device.DrawUserIndexedPrimitives(
-                            Microsoft.Xna.Framework.Graphics.PrimitiveType.TriangleList,
+                            PrimitiveType.TriangleList,
                             mesh.Vertices, 0, mesh.Vertices.Length,
                             mesh.Indices, 0, mesh.Indices.Length / 3
                         );
@@ -145,7 +203,7 @@ namespace GLTFTest
                     else
                     {
                         device.DrawUserPrimitives(
-                            Microsoft.Xna.Framework.Graphics.PrimitiveType.TriangleList,
+                            PrimitiveType.TriangleList,
                             mesh.Vertices, 0, mesh.Vertices.Length / 3
                         );
                     }
@@ -159,6 +217,14 @@ namespace GLTFTest
                 m.M21, m.M22, m.M23, m.M24,
                 m.M31, m.M32, m.M33, m.M34,
                 m.M41, m.M42, m.M43, m.M44);
+
+        public void Dispose()
+        {
+            foreach (var texture in _textures.Values)
+                texture?.Dispose();
+            _textures.Clear();
+            _basicEffect?.Dispose();
+        }
     }
 
     public class MeshData
@@ -166,5 +232,6 @@ namespace GLTFTest
         public VertexPositionNormalTexture[] Vertices;
         public short[] Indices;
         public Matrix Transform;
+        public Texture2D Texture;
     }
 }
